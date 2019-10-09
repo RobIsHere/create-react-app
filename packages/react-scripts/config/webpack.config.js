@@ -45,7 +45,7 @@ const appPackageJson = require(paths.appPackageJson);
 const shouldUseSourceMap = process.env.GENERATE_SOURCEMAP !== 'false';
 // Some apps do not need the benefits of saving a web request, so not inlining the chunk
 // makes for a smoother build process.
-const shouldInlineRuntimeChunk = process.env.INLINE_RUNTIME_CHUNK !== 'false';
+const shouldInlineRuntimeChunk = process.env.INLINE_RUNTIME_CHUNK === 'true';
 
 const imageInlineSizeLimit = parseInt(
   process.env.IMAGE_INLINE_SIZE_LIMIT || '10000'
@@ -62,7 +62,7 @@ const sassModuleRegex = /\.module\.(scss|sass)$/;
 
 // This is the production and development configuration.
 // It is focused on developer experience, fast rebuilds, and a minimal bundle.
-module.exports = function(webpackEnv) {
+function prepareConfig(webpackEnv) {
   const isEnvDevelopment = webpackEnv === 'development';
   const isEnvProduction = webpackEnv === 'production';
 
@@ -742,4 +742,54 @@ module.exports = function(webpackEnv) {
     // our own hints via the FileSizeReporter
     performance: false,
   };
+}
+
+
+module.exports = function (webpackEnv) { 
+
+  let widgetConfig;
+
+  if (process.env.SERVICE_LIBRARY) {
+
+    const libraryName = process.env.SERVICE_LIBRARY;
+    const libraryJsName = process.env.SERVICE_LIBRARY_JS_NAME || libraryName.toLowerCase();
+    const libraryCssName = process.env.SERVICE_LIBRARY_CSS_NAME || libraryName.toLowerCase();
+  
+    widgetConfig = prepareConfig(webpackEnv);
+    widgetConfig.entry[widgetConfig.entry.length - 1] = path.join(paths.appSrc, `${libraryJsName}-services.js`);
+
+    widgetConfig.plugins = widgetConfig.plugins.map(plugin => {
+
+        if (plugin instanceof MiniCssExtractPlugin) {
+          return new MiniCssExtractPlugin({
+            filename: `static/css/${libraryCssName}-services.css`,
+            chunkFilename: `static/css/${libraryCssName}-services.[contenthash:8].css`,
+          });
+        } else { 
+          return plugin;
+        }
+      }
+    );
+    //widgetConfig.plugins[5].options.publicPath = '../';  ???
+
+    widgetConfig.optimization.splitChunks = {
+      cacheGroups: {
+        default: false
+      }
+    };
+    widgetConfig.optimization.runtimeChunk = false;
+
+    widgetConfig.output.filename = `static/js/${libraryJsName}-services.js`;
+    widgetConfig.output.library = `${libraryName}Interface`;
+    widgetConfig.output.umdNamedDefine = true;
+    widgetConfig.output.libraryTarget = 'umd';
+    widgetConfig.output.libraryExport = 'default';
+
+  }
+
+  return [
+    prepareConfig(webpackEnv),
+    widgetConfig,
+  ].filter(Boolean);
+
 };
